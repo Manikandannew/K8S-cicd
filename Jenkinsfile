@@ -24,7 +24,13 @@ pipeline {
                 script {
                     def scannerHome = tool 'sonarscanner4'
                     withSonarQubeEnv('sonar-pro') {
-                        sh "${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=rocket-nodejs"
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.projectKey=rocket-nodejs \
+                            -Dsonar.sources=. \
+                            -Dsonar.host.url=http://<your-sonarqube-server>:9000 \
+                            -Dsonar.login=<your-sonar-token>
+                        """
                     }
                 }
             }
