@@ -20,19 +20,19 @@ pipeline {
             }
         }
         stage('SonarQube SAST') {
+            environment {
+                SONAR_TOKEN = credentials('sonar-token') // ID from Jenkins credentials
+            }
             steps {
                 script {
-                    // Ensure 'sonarscanner4' is defined in Jenkins Global Tool Configuration
                     def scannerHome = tool 'sonarscanner4'
-                    
-                    // Ensure 'sonar-pro' is defined in Jenkins Configure System → SonarQube servers
                     withSonarQubeEnv('sonar-pro') {
                         sh """
                             ${scannerHome}/bin/sonar-scanner \
                             -Dsonar.projectKey=rocket-nodejs \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=http://18.61.161.249:9000 \
-                            -Dsonar.login=<sonar-token>
+                            -Dsonar.login=$SONAR_TOKEN
                         """
                     }
                 }
