@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION        = 'us-east-1'
-        ECR_REPO          = '711387097471.dkr.ecr.us-east-1.amazonaws.com/my_pvt_repo'
+        ECR_REPO          = '564882306271.dkr.ecr.us-east-1.amazonaws.com/manikandan_repo'
         IMAGE_TAG         = "v${BUILD_NUMBER}"
         EKS_CLUSTER_NAME  = 'vgs_cluster'
         HELM_CHART_PATH   = './Helm'
