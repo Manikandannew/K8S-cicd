@@ -32,7 +32,7 @@ pipeline {
                             -Dsonar.projectKey=rocket-nodejs \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=http://18.61.161.249:9000 \
-                            -Dsonar.login=<your-sonar-token>
+                            -Dsonar.login=<sonar-token>
                         """
                     }
                 }
