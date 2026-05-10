@@ -1,22 +1,31 @@
 pipeline {
     agent any
+
     environment {
-        AWS_REGION = 'us-east-1' // Your AWS region
-        ECR_REPO = '881490104063.dkr.ecr.us-east-1.amazonaws.com/my_pvt_repo' // Your ECR repository URI
-        IMAGE_TAG = "v${BUILD_NUMBER}" // Dynamic version based on build number
-        EKS_CLUSTER_NAME = 'vgs_cluster' // Replace with your EKS cluster name
-        KUBECONFIG_PATH = '/opt/kube/config' // Path to kubeconfig file
-        HELM_CHART_PATH = './Helm' // Path to your Helm chart
+        AWS_REGION        = 'us-east-1'
+        ECR_REPO          = '711387097471.dkr.ecr.us-east-1.amazonaws.com/my_pvt_repo'
+        IMAGE_TAG         = "v${BUILD_NUMBER}"
+        EKS_CLUSTER_NAME  = 'vgs_cluster'
+        HELM_CHART_PATH   = './Helm'
+        HELM_RELEASE_NAME = 'myrocket'
+        WORKSPACE_PATH    = '/var/lib/jenkins/workspace/cicdmani'
     }
+
     stages {
-        stage('SCM checkout') {
+
+        // STAGE 1: Pull code from GitHub
+        stage('SCM Checkout') {
             steps {
-                script {
-                    git branch: 'main', credentialsId: 'git-cred', url: 'https://github.com/VenkatVGS/K8s_Real_Project.git'
-                }
+                deleteDir()
+                git branch: 'main',
+                    credentialsId: 'git-cred',
+                    url: 'https://github.com/Manikandannew/K8S-cicd.git'
+                sh 'ls -lart'
             }
         }
-        stage('SonarQube-SAST') {
+
+        // STAGE 2: SonarQube Code Quality Scan
+        stage('SonarQube SAST') {
             steps {
                 script {
                     def scannerHome = tool 'sonarscanner4'
@@ -26,84 +35,101 @@ pipeline {
                 }
             }
         }
+
+        // STAGE 3: Install Node.js dependencies
         stage('Build') {
             steps {
-                script {
-                    sh 'npm install'
-                }
+                sh 'npm install'
             }
         }
-        stage('Docker Build Image') {
+
+        // STAGE 4: Build Docker Image
+        stage('Docker Build') {
             steps {
-                script {
-                    // Build the Docker image with the dynamic version
-                    sh "docker build -t my_pvt_repo:${IMAGE_TAG} ."
-                    
-                    // List Docker images to confirm the build
-                    sh 'docker images'
-                }
+                sh """
+                    echo "Building Docker image: my_pvt_repo:${IMAGE_TAG}"
+                    docker build -t my_pvt_repo:${IMAGE_TAG} .
+                    docker images | grep my_pvt_repo
+                """
             }
         }
+
+        // STAGE 5: Push Docker Image to AWS ECR
         stage('Docker Push to ECR') {
             steps {
-                script {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-crendentails-vgs' // Your Jenkins AWS credentials ID
-                    ]]) {
-                        def fullImageName = "${ECR_REPO}:${IMAGE_TAG}"
-                        
-                        // Login to ECR
-                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}"
-                        
-                        // Tag the image for ECR
-                        sh "docker tag my_pvt_repo:${IMAGE_TAG} ${fullImageName}"
-                        
-                        // Push the image to ECR
-                        sh "docker push ${fullImageName}"
-                    }
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-aj'
+                ]]) {
+                    sh """
+                        echo "Logging into ECR..."
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                            docker login --username AWS --password-stdin ${ECR_REPO}
+
+                        echo "Tagging image..."
+                        docker tag my_pvt_repo:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+                        docker tag my_pvt_repo:${IMAGE_TAG} ${ECR_REPO}:latest
+
+                        echo "Pushing to ECR..."
+                        docker push ${ECR_REPO}:${IMAGE_TAG}
+                        docker push ${ECR_REPO}:latest
+
+                        echo "Done: ${ECR_REPO}:${IMAGE_TAG}"
+                    """
                 }
             }
         }
-        stage('Deploy on EKS') {
-            steps {
-                script {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-crendentails-vgs' // Replace with your Jenkins AWS credentials ID
-                    ]]) {
-                        
-                        // Set KUBECONFIG environment variable
-                        env.KUBECONFIG = '/opt/kube/config'
 
-                        // Update kubeconfig to interact with EKS cluster
-                        sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
-                        
-                        // Create Docker registry secret for Helm
-                        sh """
-                        kubectl create secret generic helm \
-                            --from-file=.dockerconfigjson=/opt/docker/config.json \
+        // STAGE 6: Deploy to EKS using Helm
+        stage('Deploy to EKS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-crendentails-aj'
+                ]]) {
+                    sh """
+                        echo "Updating kubeconfig..."
+                        aws eks update-kubeconfig \
+                            --name ${EKS_CLUSTER_NAME} \
+                            --region ${AWS_REGION}
+
+                        echo "Creating Docker registry secret..."
+                        kubectl create secret generic helm-secret \
+                            --from-file=.dockerconfigjson=\$HOME/.docker/config.json \
                             --type=kubernetes.io/dockerconfigjson \
-                            --dry-run=client -o yaml > secret.yaml
-                        kubectl apply -f secret.yaml 
-                        """
-                        
-                        // Package and deploy the Helm chart
-                        sh """
+                            --dry-run=client -o yaml | kubectl apply -f -
+
+                        echo "Packaging Helm chart..."
                         helm package ${HELM_CHART_PATH}
-                        pwd
-                        #helm install myrocket /var/lib/jenkins/workspace/project/myrocketapp-0.1.0.tgz --kubeconfig /opt/kube/config
-                        helm upgrade --install myrocket /var/lib/jenkins/workspace/rocket/myrocketapp-0.1.0.tgz \
-                        --set image.tag=v${BUILD_NUMBER} 
-                        """
-                        
-                        // List Helm releases and Kubernetes resources
-                        sh 'helm ls'
-                        sh 'kubectl get pods -o wide'
-                        sh 'kubectl get svc'
-                    }
+
+                        echo "Deploying with Helm..."
+                        helm upgrade --install ${HELM_RELEASE_NAME} \
+                            ${WORKSPACE_PATH}/myrocketapp-0.1.0.tgz \
+                            --set image.repository=${ECR_REPO} \
+                            --set image.tag=${IMAGE_TAG} \
+                            --wait \
+                            --timeout 5m
+
+                        echo "=== Deployment Status ==="
+                        helm ls
+                        kubectl get pods -o wide
+                        kubectl get svc
+                    """
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Deployment Successful! Image: ${ECR_REPO}:${IMAGE_TAG}"
+        }
+        failure {
+            echo '❌ Pipeline Failed! Check the logs above.'
+        }
+        always {
+            sh "docker rmi my_pvt_repo:${IMAGE_TAG} || true"
+            sh "docker rmi ${ECR_REPO}:${IMAGE_TAG} || true"
         }
     }
 }
