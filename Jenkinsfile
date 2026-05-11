@@ -19,9 +19,10 @@ pipeline {
                 sh 'ls -lart'
             }
         }
+
         stage('SonarQube SAST') {
             environment {
-                SONAR_TOKEN = credentials('sonar-token') // ID from Jenkins credentials
+                SONAR_TOKEN = credentials('sonar-token')
             }
             steps {
                 script {
@@ -32,11 +33,35 @@ pipeline {
                             -Dsonar.projectKey=rocket-nodejs \
                             -Dsonar.sources=. \
                             -Dsonar.host.url=http://18.60.156.100:9000 \
-                            -Dsonar.login=$SONAR_TOKEN
+                            -Dsonar.token=${SONAR_TOKEN} \
+                            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/** \
+                            -Dsonar.javascript.node.maxspace=2048 \
+                            -Dsonar.scanner.socketTimeout=300 \
+                            -Dsonar.scanner.responseTimeout=300
                         """
                     }
                 }
             }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
