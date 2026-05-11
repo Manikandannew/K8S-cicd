@@ -65,20 +65,63 @@ pipeline {
                         $class: 'AmazonWebServicesCredentialsBinding',
                         credentialsId: 'aws-crendentails-vgs'
                     ]]) {
-                        // Login to ECR
                         sh """
                             aws ecr get-login-password --region ${AWS_REGION} | \
                             docker login --username AWS \
                             --password-stdin ${ECR_REPO}
                         """
-
-                        // Tag image for ECR
                         sh "docker tag manikandan_repo:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}"
-
-                        // Push to ECR
                         sh "docker push ${ECR_REPO}:${IMAGE_TAG}"
-
                         echo "✅ Image pushed: ${ECR_REPO}:${IMAGE_TAG}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy on EKS') {
+            steps {
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-vgs'  // ← fixed credentials ID
+                    ]]) {
+                        // Set KUBECONFIG
+                        env.KUBECONFIG = '/opt/kube/config'
+
+                        // Update kubeconfig for EKS
+                        sh """
+                            aws eks update-kubeconfig \
+                            --name ${EKS_CLUSTER_NAME} \
+                            --region ${AWS_REGION} \
+                            --kubeconfig ${KUBECONFIG_PATH}
+                        """
+
+                        // Create Docker registry secret
+                        sh """
+                            kubectl create secret generic helm \
+                                --from-file=.dockerconfigjson=/opt/docker/config.json \
+                                --type=kubernetes.io/dockerconfigjson \
+                                --dry-run=client -o yaml > secret.yaml
+                            kubectl apply -f secret.yaml \
+                                --kubeconfig ${KUBECONFIG_PATH}
+                        """
+
+                        // Package Helm chart
+                        sh "helm package ${HELM_CHART_PATH}"
+
+                        // Deploy with Helm
+                        sh """
+                            helm upgrade --install ${HELM_RELEASE_NAME} \
+                            /var/lib/jenkins/workspace/K8s_pipeline/myrocketapp-0.1.0.tgz \
+                            --kubeconfig ${KUBECONFIG_PATH} \
+                            --set image.repository=${ECR_REPO} \
+                            --set image.tag=${IMAGE_TAG}
+                        """
+
+                        // Verify deployment
+                        sh "helm ls --kubeconfig ${KUBECONFIG_PATH}"
+                        sh "kubectl get pods -o wide --kubeconfig ${KUBECONFIG_PATH}"
+                        sh "kubectl get svc --kubeconfig ${KUBECONFIG_PATH}"
                     }
                 }
             }
@@ -87,7 +130,6 @@ pipeline {
 
     post {
         always {
-            // Clean up local Docker images
             sh "docker rmi manikandan_repo:${IMAGE_TAG} || true"
             sh "docker rmi ${ECR_REPO}:${IMAGE_TAG} || true"
             cleanWs()
