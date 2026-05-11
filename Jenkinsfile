@@ -57,14 +57,43 @@ pipeline {
                 }
             }
         }
+
+        stage('Docker Push to ECR') {
+            steps {
+                script {
+                    withCredentials([[
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-crendentails-aj'
+                    ]]) {
+                        // Login to ECR
+                        sh """
+                            aws ecr get-login-password --region ${AWS_REGION} | \
+                            docker login --username AWS \
+                            --password-stdin ${ECR_REPO}
+                        """
+
+                        // Tag image for ECR
+                        sh "docker tag manikandan_repo:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}"
+
+                        // Push to ECR
+                        sh "docker push ${ECR_REPO}:${IMAGE_TAG}"
+
+                        echo "✅ Image pushed: ${ECR_REPO}:${IMAGE_TAG}"
+                    }
+                }
+            }
+        }
     }
 
     post {
         always {
+            // Clean up local Docker images
+            sh "docker rmi manikandan_repo:${IMAGE_TAG} || true"
+            sh "docker rmi ${ECR_REPO}:${IMAGE_TAG} || true"
             cleanWs()
         }
         success {
-            echo "✅ Pipeline SUCCESS!"
+            echo "✅ Pipeline SUCCESS! Image: ${ECR_REPO}:${IMAGE_TAG}"
         }
         failure {
             echo "❌ Pipeline FAILED!"
