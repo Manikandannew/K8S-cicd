@@ -63,7 +63,7 @@ pipeline {
                 script {
                     withCredentials([[
                         $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-crendentails-aj'
+                        credentialsId: 'aws-crendentails-vgs'
                     ]]) {
                         // Login to ECR
                         sh """
