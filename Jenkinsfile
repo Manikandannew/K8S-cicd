@@ -5,9 +5,9 @@ pipeline {
         ECR_REPO          = '564882306271.dkr.ecr.us-east-1.amazonaws.com/manikandan_repo'
         IMAGE_TAG         = "v${BUILD_NUMBER}"
         EKS_CLUSTER_NAME  = 'vgs_cluster'
+        KUBECONFIG_PATH   = '/opt/kube/config'
         HELM_CHART_PATH   = './Helm'
         HELM_RELEASE_NAME = 'myrocket'
-        WORKSPACE_PATH    = '/var/lib/jenkins/workspace/cicdmani'
     }
     stages {
         stage('SCM Checkout') {
@@ -32,7 +32,6 @@ pipeline {
                             ${scannerHome}/bin/sonar-scanner \
                             -Dsonar.projectKey=rocket-nodejs \
                             -Dsonar.sources=. \
-                            -Dsonar.host.url=http://18.60.156.100:9000 \
                             -Dsonar.token=${SONAR_TOKEN} \
                             -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/** \
                             -Dsonar.javascript.node.maxspace=2048 \
@@ -51,6 +50,21 @@ pipeline {
                 }
             }
         }
+
+        stage('NPM Build') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
+        stage('Docker Build Image') {
+            steps {
+                script {
+                    sh "docker build -t manikandan_repo:${IMAGE_TAG} ."
+                    sh 'docker images'
+                }
+            }
+        }
     }
 
     post {
@@ -58,10 +72,10 @@ pipeline {
             cleanWs()
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo "✅ Pipeline SUCCESS!"
         }
         failure {
-            echo 'Pipeline failed!'
+            echo "❌ Pipeline FAILED!"
         }
     }
 }
