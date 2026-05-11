@@ -4,7 +4,7 @@ pipeline {
         AWS_REGION        = 'us-east-1'
         ECR_REPO          = '564882306271.dkr.ecr.us-east-1.amazonaws.com/manikandan_repo'
         IMAGE_TAG         = "v${BUILD_NUMBER}"
-        EKS_CLUSTER_NAME  = 'vgs_cluster'
+        EKS_CLUSTER_NAME  = 'vgs-cluster'
         KUBECONFIG_PATH   = '/opt/kube/config'
         HELM_CHART_PATH   = './Helm'
         HELM_RELEASE_NAME = 'myrocket'
@@ -83,9 +83,8 @@ pipeline {
                 script {
                     withCredentials([[
                         $class: 'AmazonWebServicesCredentialsBinding',
-                        credentialsId: 'aws-crendentails-vgs'  // ← fixed credentials ID
+                        credentialsId: 'aws-crendentails-vgs'
                     ]]) {
-                        // Set KUBECONFIG
                         env.KUBECONFIG = '/opt/kube/config'
 
                         // Update kubeconfig for EKS
